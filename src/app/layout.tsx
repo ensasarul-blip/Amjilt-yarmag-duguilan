@@ -2,10 +2,21 @@ import type { Metadata, Viewport } from "next";
 import { SCHOOL_NAME } from "@/lib/constants";
 import "./globals.css";
 
+/**
+ * Сайтын үндсэн хаяг. Нийгмийн сүлжээнд хуваалцахад зураг зөв гарахад хэрэгтэй.
+ * Vercel дээр автоматаар олдоно; локал дээр localhost болно.
+ */
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : "http://localhost:3000");
+
 const DESCRIPTION =
   "Амжилт Кибер Яармаг сургуулийн хичээлээс гадуурх сургалт, дугуйлангийн бүртгэл.";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: `Дугуйлангийн бүртгэл | ${SCHOOL_NAME}`,
   description: DESCRIPTION,
   applicationName: SCHOOL_NAME,

@@ -21,21 +21,32 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbG...`}
   );
 }
 
-/** Өгөгдлийн сангийн алдаа */
+/** Өгөгдлийн сантай холбогдож чадаагүй үед эцэг эхэд харагдах мэдэгдэл */
 export function ErrorNotice({ message }: { message: string }) {
   return (
-    <div className="rounded-2xl border-2 border-anhaar-600 bg-anhaar-100 p-5">
+    <div className="rounded-2xl border-2 border-anhaar-600 bg-white p-5">
       <h2 className="text-lg font-bold text-anhaar-700">
-        Өгөгдлийн сантай холбогдож чадсангүй
+        Түр зуур холбогдож чадсангүй
       </h2>
-      <p className="mt-2 text-sm text-anhaar-700">{message}</p>
-      <p className="mt-3 text-sm text-anhaar-700">
-        Supabase дээр <strong>supabase/</strong> хавтас доторх SQL файлуудыг
-        ажиллуулсан эсэхээ шалгана уу (README.md-ийн 3-р алхам).
+      <p className="mt-2 text-sm text-nil-800">
+        Интернэт холболтоо шалгаад хэсэг хүлээгээд дахин оролдоно уу. Хэвээр
+        давтагдвал сургуулийн админд хандаарай.
       </p>
-      <Link href="/" className="mt-3 inline-block font-bold text-anhaar-700 underline">
+      <Link
+        href="/"
+        className="mt-4 inline-flex min-h-13 items-center rounded-xl bg-nil-800 px-5 py-3 text-base font-bold text-white"
+      >
         Дахин оролдох
       </Link>
+      {/* Техникийн дэлгэрэнгүйг зөвхөн шаардлагатай үед харна */}
+      <details className="mt-4">
+        <summary className="cursor-pointer text-xs text-nil-600">
+          Техникийн дэлгэрэнгүй
+        </summary>
+        <p className="mt-2 rounded-lg bg-nil-100 p-2 text-xs break-words text-nil-800">
+          {message}
+        </p>
+      </details>
     </div>
   );
 }
