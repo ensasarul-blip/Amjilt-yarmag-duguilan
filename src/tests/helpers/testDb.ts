@@ -57,6 +57,8 @@ export async function setupTestDb(): Promise<TestDb> {
     port,
     persistent: false,
     initdbFlags: ["--encoding=UTF8", "--locale=en_US.UTF-8"],
+    // Өндөр ачааллын тест 200 холболт нэг зэрэг нээдэг
+    postgresFlags: ["-c", "max_connections=400"],
     onLog: () => {},
     onError: () => {},
   });

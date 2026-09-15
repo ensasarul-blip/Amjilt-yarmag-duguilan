@@ -165,6 +165,41 @@ describe("Суудлын хязгаар — зэрэгцээ бүртгэл", ()
     }
   });
 
+  it("ӨНДӨР АЧААЛАЛ: 15 суудалтай дугуйланд 200 хүсэлт ЗЭРЭГ -> 15 + 185", async () => {
+    // Сургууль "бүртгэл 20:00 цагт нээгдэнэ" гэж зарлавал олон эцэг эх
+    // яг нэг агшинд товч дарна. Тэр үед ч тоо яг таарах ёстой.
+    const clubId = await createTestClub(db.pool, {
+      name: "ТЕСТ Ачаалал (15)",
+      grades: [7],
+      capacity: 15,
+    });
+
+    const t0 = Date.now();
+    const results = await fireConcurrent({
+      clubIds: [clubId],
+      count: 200,
+      grade: 7,
+      group: "7-1",
+      namePrefix: "Ачаалал Сурагч",
+    });
+    const elapsed = Date.now() - t0;
+
+    const counts = await countByStatus(clubId);
+    expect(counts.registered).toBe(15);
+    expect(counts.waitlisted).toBe(185);
+
+    // Дараалал 1-15 ба 1-185 хүртэл давхцалгүй байх ёстой
+    const regPos = results.flat().filter((r) => r.status === "registered").map((r) => r.position);
+    const waitPos = results.flat().filter((r) => r.status === "waitlisted").map((r) => r.position);
+    expect(new Set(regPos).size).toBe(15);
+    expect(new Set(waitPos).size).toBe(185);
+
+    // Түгжээ зөв ажиллавал шугаман хугацаанд дуусна (deadlock/timeout байхгүй)
+    expect(elapsed).toBeLessThan(30_000);
+
+    await dropTestClub(db.pool, clubId);
+  }, 60_000);
+
   it("хязгааргүй дугуйланд бүгд бүртгэгдэнэ", async () => {
     const clubId = await createTestClub(db.pool, {
       name: "ТЕСТ Хязгааргүй",
