@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+/* =====================================================================
+   ӨНГӨНИЙ СИСТЕМ
+   Зөвхөн НЭГ нил ягаан өнгийн бараанаас цайвар хүртэлх градац.
+   Цорын ганц үл хамаарах зүйл: "ДҮҮРСЭН" ба цагийн давхцлын анхааруулга.
+   ===================================================================== */
+@theme {
+  --color-nil-900: #2e1a4f;
+  --color-nil-800: #3b1f6b;
+  --color-nil-600: #6b4ba3;
+  --color-nil-300: #b9a6db;
+  --color-nil-100: #ede6f7;
+
+  /* ЗӨВХӨН дүүрсэн тэмдэг ба давхцлын анхааруулгад */
+  --color-anhaar-700: #a5281b;
+  --color-anhaar-600: #c0392b;
+  --color-anhaar-100: #fdecea;
+
+  --font-sans: Arial, "Helvetica Neue", Helvetica, sans-serif;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  background-color: var(--color-nil-100);
+  color: var(--color-nil-900);
+  margin: 0;
+  /* Гар утасны "notch" хэсгийг тооцно */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Гар утсан дээр iOS автоматаар томруулахаас сэргийлнэ (16px-ээс багагүй) */
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+  font-size: 16px;
+}
+
+/* Товч, талбар дарахад тод харагдана */
+:focus-visible {
+  outline: 3px solid var(--color-nil-600);
+  outline-offset: 2px;
+}
+
+/* Дугуйлангийн картын доторх прогресс бар жигд хөдлөнө */
+.seat-bar-fill {
+  transition: width 0.4s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seat-bar-fill {
+    transition: none;
+  }
+}
+
+/* Хэвлэхэд (админы жагсаалт) */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+}
