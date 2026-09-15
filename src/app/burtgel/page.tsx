@@ -4,7 +4,11 @@ import { ErrorNotice, SetupNotice } from "@/components/Notice";
 import { loadPublicData } from "@/lib/data";
 import { supabaseConfigured } from "@/lib/supabase/server";
 
-export const dynamic = "force-dynamic";
+// Хуудсыг 60 секунд кешлэнэ: олон хүн зэрэг орвол өгөгдлийн сан руу
+// хүн бүрээр биш, 60 секунд тутамд НЭГ л удаа хандана.
+// Энэ хуудас зөвхөн ангийн бүлгийн жагсаалтыг хэрэглэдэг —
+// бараг өөрчлөгддөггүй.
+export const revalidate = 60;
 
 export default async function MyRegistrationsPage() {
   const configured = supabaseConfigured();

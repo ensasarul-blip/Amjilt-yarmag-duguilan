@@ -4,8 +4,11 @@ import { ErrorNotice, SetupNotice } from "@/components/Notice";
 import { loadPublicData } from "@/lib/data";
 import { supabaseConfigured } from "@/lib/supabase/server";
 
-// Суудлын тоо байнга шинэ байх ёстой
-export const dynamic = "force-dynamic";
+// Хуудсыг 15 секунд кешлэнэ: олон хүн зэрэг орвол өгөгдлийн сан руу
+// хүн бүрээр биш, 15 секунд тутамд НЭГ л удаа хандана.
+// Суудлын тоог хөтөч дээр Realtime-аар шууд шинэчилдэг тул
+// сервер талын хуулбар 15 секунд хоцорсон ч асуудалгүй.
+export const revalidate = 15;
 
 export default async function HomePage() {
   const configured = supabaseConfigured();

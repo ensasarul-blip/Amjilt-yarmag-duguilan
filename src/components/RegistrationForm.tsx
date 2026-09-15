@@ -91,11 +91,21 @@ export default function RegistrationForm({ clubs, groups, settings }: Props) {
 
   // ------------------------------------------------------------------
   // БОДИТ ЦАГИЙН ШИНЭЧЛЭЛТ
-  //  1) Supabase Realtime — өөр хүн бүртгүүлэхэд тоо шууд өөрчлөгдөнө
-  //  2) 20 секунд тутам дахин уншина (Realtime асаагаагүй үед ч ажиллана)
+  //
+  //  1) Supabase Realtime — өөр хүн бүртгүүлэхэд тоо шууд өөрчлөгдөнө.
+  //  2) Нөөц арга: /api/seats хаягаас давтан уншина. Энэ хаяг Vercel дээр
+  //     5 секунд кешлэгддэг тул хэдэн зуун хүн зэрэг нээсэн ч өгөгдлийн
+  //     санд ачаалал өгөхгүй.
+  //
+  //  ОЛОН ХҮН ЗЭРЭГ ОРОХ ҮЕД: Realtime холбогдож чадвал 45 секунд тутам,
+  //  чадаагүй бол 12 секунд тутам уншина. Бүгд яг нэг агшинд дуудахаас
+  //  сэргийлж санамсаргүй хугацаа (jitter) нэмнэ.
   // ------------------------------------------------------------------
   useEffect(() => {
     const supabase = createClient();
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let realtimeOk = false;
 
     const applyRow = (row: SeatCount | null | undefined) => {
       if (!row?.club_id) return;
@@ -115,28 +125,48 @@ export default function RegistrationForm({ clubs, groups, settings }: Props) {
         { event: "*", schema: "public", table: "club_seat_counts" },
         (payload) => applyRow(payload.new as SeatCount),
       )
-      .subscribe();
+      .subscribe((status) => {
+        // Үнэгүй багцад зэрэг холбогдох тоо хязгаартай. Холбогдож чадаагүй
+        // бол алдаа заахгүйгээр давтан уншилт руу шилжинэ.
+        realtimeOk = status === "SUBSCRIBED";
+      });
 
     const refetch = async () => {
-      const { data } = await supabase
-        .from("club_seat_counts")
-        .select("club_id, registered_count, waitlist_count");
-      if (!data) return;
-      setSeats((prev) => {
-        const next = { ...prev };
-        for (const row of data as SeatCount[]) {
-          next[row.club_id] = {
-            registered: row.registered_count,
-            waitlisted: row.waitlist_count,
-          };
-        }
-        return next;
-      });
+      try {
+        const res = await fetch("/api/seats");
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          ok: boolean;
+          seats?: Record<string, { r: number; w: number }>;
+        };
+        if (!json.ok || !json.seats || stopped) return;
+        setSeats((prev) => {
+          const next = { ...prev };
+          for (const [id, v] of Object.entries(json.seats!)) {
+            next[id] = { registered: v.r, waitlisted: v.w };
+          }
+          return next;
+        });
+      } catch {
+        // Сүлжээ тасарсан — дараагийн удаа дахин оролдоно
+      }
     };
 
-    const timer = setInterval(refetch, 20_000);
+    const schedule = () => {
+      const base = realtimeOk ? 45_000 : 12_000;
+      const jitter = Math.random() * base * 0.4; // 800 хөтөч нэг дор дуудахгүй
+      timer = setTimeout(async () => {
+        if (stopped) return;
+        // Таб далд байвал уншихгүй — утасны батерей, сүлжээг хэмнэнэ
+        if (document.visibilityState === "visible") await refetch();
+        schedule();
+      }, base + jitter);
+    };
+    schedule();
+
     return () => {
-      clearInterval(timer);
+      stopped = true;
+      if (timer) clearTimeout(timer);
       supabase.removeChannel(channel);
     };
   }, []);
@@ -268,13 +298,38 @@ export default function RegistrationForm({ clubs, groups, settings }: Props) {
 
     try {
       const supabase = createClient();
-      const { data, error } = await supabase.rpc("register_student", {
+      const args = {
         p_student_name: cleanName(studentName),
         p_grade: grade,
         p_class_group: classGroup,
         p_parent_phone: normalizePhone(phone),
         p_club_ids: selected,
-      });
+      };
+
+      // ОЛОН ХҮН ЗЭРЭГ БҮРТГҮҮЛЭХ ҮЕД: сервер түр завгүй байж болзошгүй.
+      // Ийм түр зуурын саатал гарвал 3 хүртэл удаа өөрөө дахин оролдоно —
+      // эцэг эх дахин товч дарах шаардлагагүй.
+      // (Давхар бүртгэлээс өгөгдлийн сангийн давтагдашгүй индекс сэргийлдэг
+      //  тул дахин оролдоход эрсдэлгүй.)
+      let data: unknown = null;
+      let error: { message: string } | null = null;
+
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await supabase.rpc("register_student", args);
+        data = res.data;
+        error = res.error;
+        if (!error) break;
+
+        const msg = error.message ?? "";
+        const temporary =
+          /timeout|timed out|fetch|network|too many|unavailable|503|504|57014|53300|40001/i.test(
+            msg,
+          );
+        if (!temporary || attempt === 2) break;
+
+        // 0.6 сек, дараа нь 1.8 сек хүлээгээд дахин оролдоно
+        await new Promise((r) => setTimeout(r, 600 * Math.pow(3, attempt)));
+      }
 
       if (error) {
         const code = Object.keys(DB_ERROR_MESSAGE).find((k) => error.message.includes(k));

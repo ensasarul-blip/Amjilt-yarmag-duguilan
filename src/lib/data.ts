@@ -1,4 +1,4 @@
-import { createClient } from "./supabase/server";
+import { createAnonClient } from "./supabase/anon";
 import type {
   AppSettings,
   ClassGroup,
@@ -18,7 +18,7 @@ export type PublicData =
  */
 export async function loadPublicData(): Promise<PublicData> {
   try {
-    const supabase = await createClient();
+    const supabase = createAnonClient();
 
     const [settingsRes, groupsRes, clubsRes, sessionsRes, seatsRes] =
       await Promise.all([
