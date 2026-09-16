@@ -113,7 +113,7 @@ function Countdown({ schedule, now }: { schedule: LevelSchedule[]; now: Date | n
 
   return (
     <p className="border-t-2 border-nil-100 px-4 py-3 text-sm text-nil-800">
-      <strong>{next.name}</strong>-ийн бүртгэл нээгдэх хүртэл{" "}
+      <strong>{next.name}</strong>йн бүртгэл нээгдэх хүртэл{" "}
       <strong className="text-nil-900">{formatCountdown(next.at.getTime() - now.getTime())}</strong>
     </p>
   );
