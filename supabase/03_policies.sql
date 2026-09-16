@@ -19,6 +19,37 @@ alter table public.registrations    enable row level security;
 alter table public.level_schedule   enable row level security;
 
 -- ---------------------------------------------------------------------
+-- ХҮСНЭГТИЙН ТҮВШНИЙ ЭРХ
+--   Supabase энэ эрхийг ихэвчлэн автоматаар өгдөг (default privileges),
+--   гэхдээ тодорхой бичсэн нь найдвартай бөгөөд ойлгомжтой.
+--   RLS нь МӨРИЙН эрхийг, эдгээр нь ХҮСНЭГТИЙН эрхийг хариуцна —
+--   хоёулаа зөвшөөрч байж л уншина.
+-- ---------------------------------------------------------------------
+grant usage on schema public to anon, authenticated;
+
+grant select on
+    public.clubs,
+    public.club_sessions,
+    public.club_seat_counts,
+    public.app_settings,
+    public.class_groups,
+    public.level_schedule
+  to anon, authenticated;
+
+-- Админ (нэвтэрсэн) бүх хүснэгтэд бичнэ
+grant select, insert, update, delete on
+    public.clubs,
+    public.club_sessions,
+    public.club_seat_counts,
+    public.app_settings,
+    public.class_groups,
+    public.level_schedule,
+    public.registrations
+  to authenticated;
+
+-- ⚠️ anon-д registrations хүснэгт дээр ЯМАР Ч эрх өгөхгүй.
+
+-- ---------------------------------------------------------------------
 -- Нийтэд НЭЭЛТТЭЙ УНШИХ эрх
 -- ---------------------------------------------------------------------
 drop policy if exists clubs_public_read on public.clubs;
