@@ -22,7 +22,7 @@ export default function Header({ subtitle }: { subtitle?: string }) {
           />
         </Link>
 
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="text-sm leading-tight font-bold tracking-wide sm:text-lg">
             {SCHOOL_NAME}
           </h1>
@@ -30,6 +30,14 @@ export default function Header({ subtitle }: { subtitle?: string }) {
             {subtitle ?? "Хичээлээс гадуурх сургалт, дугуйлангийн бүртгэл"}
           </p>
         </div>
+
+        {/* Журмыг аль ч хуудаснаас дахин уншиж болно */}
+        <Link
+          href="/juram"
+          className="shrink-0 rounded-lg border border-nil-300/60 px-2.5 py-1.5 text-xs font-bold text-nil-300 sm:text-sm"
+        >
+          Журам
+        </Link>
       </div>
     </header>
   );

@@ -6,6 +6,7 @@ import Link from "next/link";
 import ClubCard from "./ClubCard";
 import ConflictAlert from "./ConflictAlert";
 import ConfirmationPanel from "./ConfirmationPanel";
+import JuramGate from "./JuramGate";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -38,8 +39,11 @@ type Props = {
 const CONFIRM_KEY = "amjilt:confirmation";
 
 /** Дээд талын явцын заагч */
-function StepBar({ step }: { step: 1 | 2 }) {
+type Step = 0 | 1 | 2;
+
+function StepBar({ step }: { step: Step }) {
   const steps = [
+    { n: 0, label: "Журам" },
     { n: 1, label: "Сурагчийн мэдээлэл" },
     { n: 2, label: "Дугуйлан сонгох" },
   ] as const;
@@ -57,7 +61,7 @@ function StepBar({ step }: { step: 1 | 2 }) {
                 current ? "font-bold text-nil-900" : "text-nil-600"
               }`}
             >
-              {s.n}. {s.label}
+              {s.n + 1}. {s.label}
             </p>
           </li>
         );
@@ -69,7 +73,8 @@ function StepBar({ step }: { step: 1 | 2 }) {
 export default function RegistrationForm({ clubs, groups, settings }: Props) {
   const router = useRouter();
 
-  const [step, setStep] = useState<1 | 2>(1);
+  // 0 = журам, 1 = сурагчийн мэдээлэл, 2 = дугуйлан сонгох
+  const [step, setStep] = useState<Step>(0);
   const [grade, setGrade] = useState<number | "">("");
   const [classGroup, setClassGroup] = useState("");
   const [studentName, setStudentName] = useState("");
@@ -382,6 +387,16 @@ export default function RegistrationForm({ clubs, groups, settings }: Props) {
     `mt-1.5 min-h-12 w-full rounded-xl border-2 px-3 text-nil-900 placeholder:text-nil-300 ${
       bad ? "border-anhaar-600" : "border-nil-300"
     }`;
+
+  // ============================ АЛХАМ 0: ЖУРАМ ============================
+  if (step === 0) {
+    return (
+      <div>
+        <StepBar step={0} />
+        <JuramGate onAccept={() => setStep(1)} />
+      </div>
+    );
+  }
 
   // ============================ АЛХАМ 1 ============================
   if (step === 1) {
