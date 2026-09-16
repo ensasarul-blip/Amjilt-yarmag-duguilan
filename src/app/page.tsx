@@ -27,6 +27,7 @@ export default async function HomePage() {
             clubs={data.clubs}
             groups={data.groups}
             settings={data.settings}
+            schedule={data.schedule}
           />
         ) : null}
       </main>

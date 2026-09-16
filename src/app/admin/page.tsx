@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AdminHeader from "@/components/admin/AdminHeader";
 import SettingsPanel from "@/components/admin/SettingsPanel";
+import SchedulePanel from "@/components/admin/SchedulePanel";
 import { ErrorNotice, SetupNotice } from "@/components/Notice";
 import { GRADES, LEVELS, WEEKDAYS } from "@/lib/constants";
 import { formatGrades, formatSession, sortSessions } from "@/lib/format";
@@ -97,6 +98,7 @@ export default async function AdminDashboardPage({
         {/* ---------- Тохиргоо ---------- */}
         <div className="mt-3">
           <SettingsPanel settings={data.settings} />
+          <SchedulePanel schedule={data.schedule} />
         </div>
 
         {/* ---------- Шүүлтүүр ---------- */}

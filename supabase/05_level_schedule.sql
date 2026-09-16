@@ -1,30 +1,52 @@
 -- =====================================================================
---  02_functions.sql : Суудлын хязгаарыг АТОМАРААР хянах функцүүд
+--  05. ШАТЛАСАН БҮРТГЭЛ (түвшин тус бүр өөр өдөр)
 --
---  ГОЛ САНАА
---  ---------
---  Бүртгэл бүр `SELECT ... FROM clubs WHERE id = ? FOR UPDATE` гэсэн
---  МӨРИЙН ТҮГЖЭЭ авснаар эхэлнэ. Ингэснээр нэг дугуйлан дээр зэрэг ирсэн
---  хүсэлтүүд ДАРААЛАЛД ОРНО. Суудлыг тоолох ба бүртгэх үйлдэл түгжээний
---  дотор явагдах тул хязгаараас ХЭЗЭЭ Ч хэтрэхгүй.
+--  ⚠️ ЭНЭ ФАЙЛЫГ ЗӨВХӨН НЭГ УДАА АЖИЛЛУУЛНА.
+--     Supabase -> SQL Editor -> New query -> доорхийг бүтнээр нь хуулж
+--     тавиад -> Run.
 --
---  Функц бүр нэг гүйлгээ (transaction) — бүгд амжилттай, эсвэл бүгд буцна.
+--  Хийх зүйл:
+--    1. level_schedule хүснэгт үүсгэнэ (түвшин бүрийн нээх/хаах хугацаа)
+--    2. Бага 09-21, Дунд 09-22, Ахлах 09-23 гэж бөглөнө
+--    3. Бүртгэлийн функц тухайн түвшний өдөр мөн эсэхийг ШАЛГАДАГ болно
+--
+--  Дахин ажиллуулсан ч аюулгүй (бүх зүйл "if not exists" / "or replace").
+--  Аль хэдийн байгаа огноог ДАРЖ БИЧИХГҮЙ.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
---  register_student : эцэг эхийн үндсэн бүртгэл
---
---  Буцаах утга (jsonb массив), дугуйлан бүрд нэг элемент:
---    { club_id, club_name, status, position, registration_id }
---
---  status:
---    registered     -> бүртгэгдлээ
---    waitlisted     -> дүүрсэн тул хүлээлгийн жагсаалтад (position = хэд дэх)
---    duplicate      -> энэ сурагч уг дугуйланд аль хэдийн бүртгэлтэй
---    limit_reached  -> нэг сурагчийн дугуйлангийн дээд хязгаарт хүрсэн
---    closed         -> уг дугуйлангийн бүртгэл хаалттай
---    grade_mismatch -> тухайн анги энэ дугуйланд хамаарахгүй
---    not_found      -> дугуйлан олдсонгүй
+-- 1. Хүснэгт
+-- ---------------------------------------------------------------------
+-- ---------------------------------------------------------------------
+-- Түвшин тус бүрийн бүртгэлийн хуваарь (шатласан бүртгэл)
+--   Бага / дунд / ахлах анги өөр өөр өдөр бүртгүүлнэ.
+--   opens_at ба closes_at NULL бол тухайн түвшинд хязгаар байхгүй.
+--   Хугацааг ЗӨВХӨН энэ хүснэгтээр удирдана — админ самбараас өөрчилнө.
+-- ---------------------------------------------------------------------
+create table if not exists public.level_schedule (
+  level      text primary key check (level in ('baga','dund','ahlah')),
+  opens_at   timestamptz,
+  closes_at  timestamptz,
+  sort_order smallint not null default 0,
+  constraint level_schedule_time_order
+    check (opens_at is null or closes_at is null or closes_at > opens_at)
+);
+
+-- ---------------------------------------------------------------------
+-- 2. Эрхийн тохиргоо (RLS)
+-- ---------------------------------------------------------------------
+alter table public.level_schedule enable row level security;
+
+drop policy if exists schedule_public_read on public.level_schedule;
+create policy schedule_public_read on public.level_schedule
+  for select to anon, authenticated using (true);
+
+drop policy if exists schedule_admin_all on public.level_schedule;
+create policy schedule_admin_all on public.level_schedule
+  for all to authenticated using (true) with check (true);
+
+-- ---------------------------------------------------------------------
+-- 3. Туслах функцүүд
 -- ---------------------------------------------------------------------
 -- ---------------------------------------------------------------------
 -- Анги -> түвшин (бага 1-5, дунд 6-9, ахлах 10-12)
@@ -68,6 +90,9 @@ begin
 end
 $$;
 
+-- ---------------------------------------------------------------------
+-- 4. Бүртгэлийн функцийг шинэчилнэ (түвшний шалгалт нэмэгдсэн)
+-- ---------------------------------------------------------------------
 create or replace function public.register_student(
   p_student_name text,
   p_grade        smallint,
@@ -251,193 +276,31 @@ begin
   return v_results;
 end
 $$;
-
-
--- ---------------------------------------------------------------------
---  cancel_registration : бүртгэл цуцлах.
---  Хязгаартай дугуйлан бол хүлээлгийн ЭХНИЙ хүнийг автоматаар дэвшүүлнэ.
--- ---------------------------------------------------------------------
-create or replace function public.cancel_registration(p_registration_id uuid)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_reg        public.registrations%rowtype;
-  v_club       public.clubs%rowtype;
-  v_promoted_id   uuid;
-  v_promoted_name text;
-  v_taken      integer;
-begin
-  select * into v_reg from public.registrations where id = p_registration_id;
-  if not found then
-    raise exception 'БҮРТГЭЛ_ОЛДСОНГҮЙ';
-  end if;
-
-  if v_reg.status = 'cancelled' then
-    return jsonb_build_object('cancelled', false, 'reason', 'already_cancelled');
-  end if;
-
-  -- >>> ТҮГЖЭЭ: дэвшүүлэлт зэрэг явахаас сэргийлнэ <<<
-  select * into v_club from public.clubs where id = v_reg.club_id for update;
-
-  update public.registrations
-     set status = 'cancelled', cancelled_at = now()
-   where id = p_registration_id;
-
-  -- Хүлээлгийн эхний хүнийг автоматаар бүртгэнэ
-  if v_club.capacity is not null then
-    select count(*) into v_taken
-    from public.registrations r
-    where r.club_id = v_club.id and r.status = 'registered';
-
-    if v_taken < v_club.capacity then
-      select r.id, r.student_name into v_promoted_id, v_promoted_name
-      from public.registrations r
-      where r.club_id = v_club.id and r.status = 'waitlisted'
-      order by r.created_at, r.id
-      limit 1;
-
-      if v_promoted_id is not null then
-        update public.registrations
-           set status = 'registered'
-         where id = v_promoted_id;
-      end if;
-    end if;
-  end if;
-
-  return jsonb_build_object(
-    'cancelled', true,
-    'club_id', v_club.id,
-    'promoted_registration_id', v_promoted_id,
-    'promoted_student_name', v_promoted_name
-  );
-end
 $$;
 
+-- ---------------------------------------------------------------------
+-- 5. Хуваарийг бөглөнө
+-- ---------------------------------------------------------------------
+-- ---------------------------------------------------------------------
+-- ШАТЛАСАН БҮРТГЭЛИЙН ХУВААРЬ
+--   Цагийг Улаанбаатарын цагаар (+08) бичнэ.
+--   Түвшин бүр ЗӨВХӨН өөрийн өдөр нээлттэй.
+--     Бага  — 2026-09-21 Даваа
+--     Дунд  — 2026-09-22 Мягмар
+--     Ахлах — 2026-09-23 Лхагва
+--   Огноог админ самбараас өөрчилж болно.
+-- ---------------------------------------------------------------------
+insert into public.level_schedule (level, opens_at, closes_at, sort_order) values
+  ('baga',  '2026-09-21 00:00:00+08', '2026-09-22 00:00:00+08', 1),
+  ('dund',  '2026-09-22 00:00:00+08', '2026-09-23 00:00:00+08', 2),
+  ('ahlah', '2026-09-23 00:00:00+08', '2026-09-24 00:00:00+08', 3)
+on conflict (level) do nothing;
 
 -- ---------------------------------------------------------------------
---  promote_registration : админ ГАРААР хүлээлгээс бүртгэлд оруулах.
---  Хязгаараас хэтэрч байвал over_capacity = true гэж мэдэгдэнэ
---  (админы шийдвэр тул хориглохгүй).
+-- 6. ШАЛГАХ — доорх мөр 3 эгнээ буцаах ёстой
 -- ---------------------------------------------------------------------
-create or replace function public.promote_registration(p_registration_id uuid)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_reg   public.registrations%rowtype;
-  v_club  public.clubs%rowtype;
-  v_taken integer;
-  v_over  boolean := false;
-begin
-  select * into v_reg from public.registrations where id = p_registration_id;
-  if not found then
-    raise exception 'БҮРТГЭЛ_ОЛДСОНГҮЙ';
-  end if;
-
-  select * into v_club from public.clubs where id = v_reg.club_id for update;
-
-  select count(*) into v_taken
-  from public.registrations r
-  where r.club_id = v_club.id and r.status = 'registered';
-
-  if v_club.capacity is not null and v_taken >= v_club.capacity then
-    v_over := true;
-  end if;
-
-  update public.registrations
-     set status = 'registered', cancelled_at = null
-   where id = p_registration_id;
-
-  return jsonb_build_object('promoted', true, 'over_capacity', v_over);
-end
-$$;
-
-
--- ---------------------------------------------------------------------
---  find_my_registrations : эцэг эх өөрийн бүртгэлээ хайх.
---  Нэвтрэх шаардлагагүй. Зөвхөн ТУХАЙН сурагчийн мөрийг буцаана.
---  Утасны дугаарыг бүтнээр нь буцаахгүй (сүүлийн 4 орон л харагдана).
--- ---------------------------------------------------------------------
-create or replace function public.find_my_registrations(
-  p_grade       smallint,
-  p_class_group text,
-  p_student_name text
-)
-returns table (
-  registration_id uuid,
-  club_id         uuid,
-  club_name       text,
-  room            text,
-  teacher         text,
-  status          text,
-  queue_position  bigint,
-  phone_masked    text,
-  created_at      timestamptz
-)
-language sql
-security definer
-stable
-set search_path = public
-as $$
-  select r.id,
-         c.id,
-         c.name,
-         c.room,
-         c.teacher,
-         r.status,
-         (select count(*)
-            from public.registrations r2
-           where r2.club_id = r.club_id
-             and r2.status  = r.status
-             and (r2.created_at, r2.id) <= (r.created_at, r.id)),
-         '****' || right(r.parent_phone, 4),
-         r.created_at
-  from public.registrations r
-  join public.clubs c on c.id = r.club_id
-  where r.grade       = p_grade
-    and r.class_group = p_class_group
-    and r.student_key = public.norm_name(p_student_name)
-    and r.status     <> 'cancelled'
-  order by r.created_at;
-$$;
-
-
--- ---------------------------------------------------------------------
---  cancel_my_registration : эцэг эх өөрийн бүртгэлээ устгах.
---  Анги + бүлэг + нэр гурав таарч байж л цуцална.
--- ---------------------------------------------------------------------
-create or replace function public.cancel_my_registration(
-  p_registration_id uuid,
-  p_grade           smallint,
-  p_class_group     text,
-  p_student_name    text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_ok boolean;
-begin
-  select exists (
-    select 1 from public.registrations r
-    where r.id          = p_registration_id
-      and r.grade       = p_grade
-      and r.class_group = p_class_group
-      and r.student_key = public.norm_name(p_student_name)
-      and r.status     <> 'cancelled'
-  ) into v_ok;
-
-  if not v_ok then
-    raise exception 'БҮРТГЭЛ_ТААРАХГҮЙ';
-  end if;
-
-  return public.cancel_registration(p_registration_id);
-end
-$$;
+select level,
+       opens_at  at time zone 'Asia/Ulaanbaatar' as "нээгдэх",
+       closes_at at time zone 'Asia/Ulaanbaatar' as "хаагдах"
+from public.level_schedule
+order by sort_order;

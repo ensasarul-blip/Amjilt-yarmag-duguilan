@@ -241,6 +241,52 @@ export async function promoteRegistrationAction(formData: FormData) {
 // ---------------------------------------------------------------------
 // Ерөнхий тохиргоо
 // ---------------------------------------------------------------------
+/**
+ * ШАТЛАСАН БҮРТГЭЛ: түвшин бүрийн өдрийг хадгална.
+ *
+ * Админ зөвхөн ӨДРИЙГ сонгоно. Тухайн өдрийн 00:00-ээс маргаашийн 00:00
+ * хүртэл (Улаанбаатарын цагаар) нээлттэй байна. Хоосон орхивол
+ * тэр түвшинд хязгаар байхгүй болно.
+ */
+export async function updateScheduleAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const supabase = await requireAdmin();
+
+  const LEVEL_CODES = ["baga", "dund", "ahlah"] as const;
+
+  for (const level of LEVEL_CODES) {
+    const raw = String(formData.get(`date_${level}`) ?? "").trim();
+
+    let opens_at: string | null = null;
+    let closes_at: string | null = null;
+
+    if (raw) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+      if (!m) return { ok: false, message: "Огноо буруу байна." };
+      const [, y, mo, d] = m;
+      // Улаанбаатар = UTC+8 (зуны цаг байхгүй), тиймээс 00:00+08 = 16:00 UTC өмнөх өдөр
+      const opens = new Date(
+        Date.UTC(Number(y), Number(mo) - 1, Number(d)) - 8 * 3600 * 1000,
+      );
+      opens_at = opens.toISOString();
+      closes_at = new Date(opens.getTime() + 24 * 3600 * 1000).toISOString();
+    }
+
+    const { error } = await supabase
+      .from("level_schedule")
+      .update({ opens_at, closes_at })
+      .eq("level", level);
+
+    if (error) return { ok: false, message: `Алдаа: ${error.message}` };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/");
+  return { ok: true, message: "Хуваарь хадгалагдлаа." };
+}
+
 export async function updateSettingsAction(
   _prev: ActionState,
   formData: FormData,

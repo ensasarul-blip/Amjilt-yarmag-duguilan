@@ -16,6 +16,7 @@ alter table public.club_seat_counts enable row level security;
 alter table public.app_settings     enable row level security;
 alter table public.class_groups     enable row level security;
 alter table public.registrations    enable row level security;
+alter table public.level_schedule   enable row level security;
 
 -- ---------------------------------------------------------------------
 -- Нийтэд НЭЭЛТТЭЙ УНШИХ эрх
@@ -40,6 +41,10 @@ drop policy if exists groups_public_read on public.class_groups;
 create policy groups_public_read on public.class_groups
   for select to anon, authenticated using (true);
 
+drop policy if exists schedule_public_read on public.level_schedule;
+create policy schedule_public_read on public.level_schedule
+  for select to anon, authenticated using (true);
+
 -- ---------------------------------------------------------------------
 -- Админ (нэвтэрсэн хэрэглэгч) — бүрэн эрх
 -- ---------------------------------------------------------------------
@@ -61,6 +66,10 @@ create policy settings_admin_all on public.app_settings
 
 drop policy if exists groups_admin_all on public.class_groups;
 create policy groups_admin_all on public.class_groups
+  for all to authenticated using (true) with check (true);
+
+drop policy if exists schedule_admin_all on public.level_schedule;
+create policy schedule_admin_all on public.level_schedule
   for all to authenticated using (true) with check (true);
 
 drop policy if exists registrations_admin_all on public.registrations;

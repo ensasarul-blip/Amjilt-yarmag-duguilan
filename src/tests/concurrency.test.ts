@@ -9,13 +9,47 @@ import {
 
 let db: TestDb;
 
+/** Seed дэх шатласан хуваарь — цэвэрлэхийн ӨМНӨ хадгална */
+let seededSchedule: { level: string; opens_at: string; closes_at: string }[] = [];
+
 beforeAll(async () => {
   db = await setupTestDb();
+
+  // Улаанбаатарын цагаар харуулна — тест ажиллаж буй машины цагийн бүсээс хамаарахгүй
+  const { rows } = await db.pool.query(`
+    select level,
+           to_char(opens_at  at time zone 'Asia/Ulaanbaatar', 'YYYY-MM-DD HH24:MI') as opens_at,
+           to_char(closes_at at time zone 'Asia/Ulaanbaatar', 'YYYY-MM-DD HH24:MI') as closes_at
+      from public.level_schedule order by sort_order
+  `);
+  seededSchedule = rows;
+
+  // Бусад тестүүд огнооноос хамаарахгүй байхын тулд хуваарийг түр арилгана.
+  // "Шатласан бүртгэл" хэсэг өөрөө хэрэгтэй огноогоо тавьж шалгана.
+  await db.pool.query("update public.level_schedule set opens_at = null, closes_at = null");
+
   // eslint-disable-next-line no-console
   console.log(
     `\n  Өгөгдлийн сан: ${db.mode === "local" ? "локал түр PostgreSQL" : "DATABASE_URL (Supabase)"}\n`,
   );
 }, 240_000);
+
+async function clearSchedule() {
+  await db.pool.query("update public.level_schedule set opens_at = null, closes_at = null");
+}
+
+/** Нэг сурагчийг бүртгэх оролдлого — алдааны мессежийг буцаана */
+async function tryRegister(grade: number, group: string, clubId: string, name: string) {
+  try {
+    const { rows } = await db.pool.query(
+      "select public.register_student($1, $2::smallint, $3, $4, $5::uuid[]) as result",
+      [name, grade, group, "99000000", [clubId]],
+    );
+    return { ok: true as const, result: rows[0].result as RegResult[] };
+  } catch (err) {
+    return { ok: false as const, message: (err as Error).message };
+  }
+}
 
 afterAll(async () => {
   await db?.close();
@@ -407,6 +441,125 @@ describe("Дүрмийн шалгалт", () => {
     } finally {
       await dropTestClub(db.pool, clubId);
     }
+  });
+});
+
+describe("Шатласан бүртгэл — түвшин бүр өөрийн өдөр", () => {
+  it("seed дээр Бага 09-21, Дунд 09-22, Ахлах 09-23 гэж тохируулагдсан", () => {
+    const by = Object.fromEntries(seededSchedule.map((r) => [r.level, r]));
+    expect(seededSchedule).toHaveLength(3);
+    // Улаанбаатарын цагаар шөнө дунд эхэлж, маргааш нь шөнө дунд дуусна
+    expect(by.baga.opens_at).toBe("2026-09-21 00:00");
+    expect(by.dund.opens_at).toBe("2026-09-22 00:00");
+    expect(by.ahlah.opens_at).toBe("2026-09-23 00:00");
+    // Түвшин бүр яг 1 хоног нээлттэй
+    expect(by.baga.closes_at).toBe("2026-09-22 00:00");
+    expect(by.dund.closes_at).toBe("2026-09-23 00:00");
+    expect(by.ahlah.closes_at).toBe("2026-09-24 00:00");
+  });
+
+  it("өөрийн өдөр нь бол бүртгүүлнэ", async () => {
+    const clubId = await createTestClub(db.pool, {
+      name: "ТЕСТ Хуваарь бага",
+      grades: [3],
+      capacity: null,
+    });
+    await db.pool.query(
+      "update public.level_schedule set opens_at = now() - interval '1 hour', closes_at = now() + interval '1 hour' where level = 'baga'",
+    );
+
+    const r = await tryRegister(3, "3-1", clubId, "Хуваарь Зөв");
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.result[0].status).toBe("registered");
+
+    await clearSchedule();
+    await dropTestClub(db.pool, clubId);
+  });
+
+  it("өдөр нь хараахан болоогүй бол ТҮВШИН_ЭХЛЭЭГҮЙ", async () => {
+    const clubId = await createTestClub(db.pool, {
+      name: "ТЕСТ Хуваарь дунд",
+      grades: [7],
+      capacity: null,
+    });
+    await db.pool.query(
+      "update public.level_schedule set opens_at = now() + interval '1 day', closes_at = now() + interval '2 day' where level = 'dund'",
+    );
+
+    const r = await tryRegister(7, "7-1", clubId, "Хуваарь Эрт");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toContain("ТҮВШИН_ЭХЛЭЭГҮЙ");
+
+    await clearSchedule();
+    await dropTestClub(db.pool, clubId);
+  });
+
+  it("өдөр нь өнгөрсөн бол ТҮВШИН_ДУУССАН", async () => {
+    const clubId = await createTestClub(db.pool, {
+      name: "ТЕСТ Хуваарь ахлах",
+      grades: [11],
+      capacity: null,
+    });
+    await db.pool.query(
+      "update public.level_schedule set opens_at = now() - interval '2 day', closes_at = now() - interval '1 day' where level = 'ahlah'",
+    );
+
+    const r = await tryRegister(11, "11-1", clubId, "Хуваарь Хоцорсон");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toContain("ТҮВШИН_ДУУССАН");
+
+    await clearSchedule();
+    await dropTestClub(db.pool, clubId);
+  });
+
+  it("БАГА ангийн өдөр ДУНД анги бүртгүүлж ЧАДАХГҮЙ", async () => {
+    const bagaClub = await createTestClub(db.pool, {
+      name: "ТЕСТ Зэрэг бага",
+      grades: [3],
+      capacity: null,
+    });
+    const dundClub = await createTestClub(db.pool, {
+      name: "ТЕСТ Зэрэг дунд",
+      grades: [7],
+      capacity: null,
+    });
+
+    // 9-р сарын 21: зөвхөн бага нээлттэй
+    await db.pool.query(`
+      update public.level_schedule set
+        opens_at  = case level when 'baga' then now() - interval '1 hour'
+                               when 'dund' then now() + interval '1 day'
+                               else now() + interval '2 day' end,
+        closes_at = case level when 'baga' then now() + interval '1 hour'
+                               when 'dund' then now() + interval '2 day'
+                               else now() + interval '3 day' end
+    `);
+
+    const baga = await tryRegister(3, "3-1", bagaClub, "Бага Сурагч");
+    const dund = await tryRegister(7, "7-1", dundClub, "Дунд Сурагч");
+    const ahlah = await tryRegister(11, "11-1", dundClub, "Ахлах Сурагч");
+
+    expect(baga.ok).toBe(true);
+    expect(dund.ok).toBe(false);
+    expect(ahlah.ok).toBe(false);
+
+    await clearSchedule();
+    await dropTestClub(db.pool, bagaClub);
+    await dropTestClub(db.pool, dundClub);
+  });
+
+  it("хуваарь тохируулаагүй (NULL) бол хязгаарлахгүй", async () => {
+    const clubId = await createTestClub(db.pool, {
+      name: "ТЕСТ Хуваарьгүй",
+      grades: [9],
+      capacity: null,
+    });
+    await clearSchedule();
+
+    const r = await tryRegister(9, "9-1", clubId, "Хязгааргүй Сурагч");
+    expect(r.ok).toBe(true);
+
+    await dropTestClub(db.pool, clubId);
   });
 });
 

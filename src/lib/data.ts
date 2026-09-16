@@ -5,11 +5,18 @@ import type {
   Club,
   ClubSession,
   ClubView,
+  LevelSchedule,
   SeatCount,
 } from "./types";
 
 export type PublicData =
-  | { ok: true; settings: AppSettings; groups: ClassGroup[]; clubs: ClubView[] }
+  | {
+      ok: true;
+      settings: AppSettings;
+      groups: ClassGroup[];
+      clubs: ClubView[];
+      schedule: LevelSchedule[];
+    }
   | { ok: false; error: string };
 
 /**
@@ -20,7 +27,7 @@ export async function loadPublicData(): Promise<PublicData> {
   try {
     const supabase = createAnonClient();
 
-    const [settingsRes, groupsRes, clubsRes, sessionsRes, seatsRes] =
+    const [settingsRes, groupsRes, clubsRes, sessionsRes, seatsRes, scheduleRes] =
       await Promise.all([
         supabase.from("app_settings").select("*").eq("id", 1).maybeSingle(),
         supabase
@@ -31,6 +38,10 @@ export async function loadPublicData(): Promise<PublicData> {
         supabase.from("clubs").select("*").order("sort_order", { ascending: true }),
         supabase.from("club_sessions").select("*"),
         supabase.from("club_seat_counts").select("*"),
+        supabase
+          .from("level_schedule")
+          .select("*")
+          .order("sort_order", { ascending: true }),
       ]);
 
     const firstError =
@@ -75,6 +86,10 @@ export async function loadPublicData(): Promise<PublicData> {
       settings,
       groups: (groupsRes.data ?? []) as ClassGroup[],
       clubs,
+      // ⚠️ level_schedule хүснэгт хараахан үүсээгүй байж болно (05_level_schedule.sql
+      //    ажиллуулаагүй). Тийм үед алдаа зааж хуудсыг унагахын оронд хоосон
+      //    хуваарь өгнө — энэ нь "хязгаарлахгүй" гэсэн үг.
+      schedule: scheduleRes.error ? [] : ((scheduleRes.data ?? []) as LevelSchedule[]),
     };
   } catch (err) {
     return { ok: false, error: (err as Error).message };

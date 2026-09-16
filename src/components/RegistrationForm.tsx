@@ -7,6 +7,7 @@ import ClubCard from "./ClubCard";
 import ConflictAlert from "./ConflictAlert";
 import ConfirmationPanel from "./ConfirmationPanel";
 import JuramGate from "./JuramGate";
+import ScheduleBanner from "./ScheduleBanner";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -15,15 +16,17 @@ import {
   SearchIcon,
 } from "./icons";
 import { createClient } from "@/lib/supabase/client";
-import { DB_ERROR_MESSAGE, GRADES } from "@/lib/constants";
+import { DB_ERROR_MESSAGE, GRADES, levelName, levelOfGrade } from "@/lib/constants";
 import { formatSession } from "@/lib/format";
 import { findConflicts } from "@/lib/overlap";
 import { cleanName, isValidName, isValidPhone, normalizePhone } from "@/lib/validation";
+import { levelState, formatCountdown, formatScheduleDay } from "@/lib/schedule";
 import type {
   AppSettings,
   ClassGroup,
   ClubView,
   ConfirmationPayload,
+  LevelSchedule,
   RegisterResult,
   SeatCount,
 } from "@/lib/types";
@@ -34,6 +37,7 @@ type Props = {
   clubs: ClubView[];
   groups: ClassGroup[];
   settings: AppSettings;
+  schedule: LevelSchedule[];
 };
 
 const CONFIRM_KEY = "amjilt:confirmation";
@@ -70,7 +74,7 @@ function StepBar({ step }: { step: Step }) {
   );
 }
 
-export default function RegistrationForm({ clubs, groups, settings }: Props) {
+export default function RegistrationForm({ clubs, groups, settings, schedule }: Props) {
   const router = useRouter();
 
   // 0 = журам, 1 = сурагчийн мэдээлэл, 2 = дугуйлан сонгох
@@ -93,6 +97,21 @@ export default function RegistrationForm({ clubs, groups, settings }: Props) {
   );
 
   const maxClubs = settings.max_clubs_per_student;
+
+  // ---- ШАТЛАСАН БҮРТГЭЛ ----
+  // Цагийг хөтөч дээр тооцно: хуудас кешлэгдсэн ч төлөв зөв байна.
+  // (Эцсийн шийдвэрийг өгөгдлийн сан гаргана — энэ нь зөвхөн дэлгэцийн тусламж.)
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+    const t = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const gradeLevel = grade === "" ? null : levelOfGrade(grade);
+  const gradeState = gradeLevel && now ? levelState(schedule, gradeLevel, now) : null;
+  const scheduleBlocked =
+    gradeState?.state === "before" || gradeState?.state === "after";
 
   // ------------------------------------------------------------------
   // БОДИТ ЦАГИЙН ШИНЭЧЛЭЛТ
@@ -262,6 +281,11 @@ export default function RegistrationForm({ clubs, groups, settings }: Props) {
     if (grade === "") return "Ангиа сонгоно уу.";
     if (!classGroup) return "Бүлгээ сонгоно уу.";
     if (!isValidPhone(phone)) return "Утасны дугаар яг 8 оронтой байх ёстой.";
+    if (scheduleBlocked) {
+      return gradeState?.state === "after"
+        ? `${levelName(gradeLevel)}йн бүртгэлийн хугацаа дууссан байна.`
+        : `${levelName(gradeLevel)}йн бүртгэл хараахан нээгдээгүй байна.`;
+    }
     return null;
   };
 
@@ -410,6 +434,8 @@ export default function RegistrationForm({ clubs, groups, settings }: Props) {
           </p>
         )}
 
+        <ScheduleBanner schedule={schedule} highlight={gradeLevel} />
+
         <section className="rounded-2xl border-2 border-nil-300 bg-white p-4">
           <div className="space-y-4">
             <div>
@@ -502,6 +528,36 @@ export default function RegistrationForm({ clubs, groups, settings }: Props) {
           </Link>
         </p>
 
+        {/* Шатласан бүртгэл: энэ ангийн ээлж болоогүй / өнгөрсөн */}
+        {scheduleBlocked && gradeState ? (
+          <div className="mt-4 rounded-2xl border-2 border-nil-600 bg-white p-4 text-center">
+            <p className="text-base font-bold text-nil-900">
+              {gradeState.state === "after"
+                ? `${levelName(gradeLevel)}йн бүртгэл дууссан`
+                : `${levelName(gradeLevel)}йн бүртгэл хараахан нээгдээгүй`}
+            </p>
+            {gradeState.state === "before" ? (
+              <>
+                <p className="mt-2 text-sm text-nil-800">
+                  Таны сонгосон {grade}-р анги{" "}
+                  <strong>{formatScheduleDay(gradeState.opensAt)}</strong> бүртгүүлнэ.
+                </p>
+                <p className="mt-3 rounded-xl bg-nil-100 px-3 py-2.5 text-sm text-nil-800">
+                  Нээгдэх хүртэл{" "}
+                  <strong className="text-nil-900">
+                    {now ? formatCountdown(gradeState.opensAt.getTime() - now.getTime()) : "—"}
+                  </strong>
+                </p>
+              </>
+            ) : (
+              <p className="mt-2 text-sm text-nil-800">
+                {formatScheduleDay(gradeState.closesAt)} хүртэл бүртгэл явагдсан. Одоо
+                бүртгүүлэх бол сургуулийн админд хандана уу.
+              </p>
+            )}
+          </div>
+        ) : null}
+
         <div className="fixed inset-x-0 bottom-0 border-t-2 border-nil-300 bg-white/95 backdrop-blur">
           <div
             className="mx-auto max-w-3xl px-4 py-3"
@@ -515,10 +571,11 @@ export default function RegistrationForm({ clubs, groups, settings }: Props) {
             <button
               type="button"
               onClick={goToStep2}
-              className="flex min-h-13 w-full items-center justify-center gap-2 rounded-xl bg-nil-800 px-4 py-3 text-base font-bold text-white"
+              disabled={scheduleBlocked}
+              className="flex min-h-13 w-full items-center justify-center gap-2 rounded-xl bg-nil-800 px-4 py-3 text-base font-bold text-white disabled:bg-nil-300 disabled:text-nil-600"
             >
-              Үргэлжлүүлэх
-              <ArrowRightIcon className="h-5 w-5" />
+              {scheduleBlocked ? "Энэ ангийн ээлж болоогүй байна" : "Үргэлжлүүлэх"}
+              {!scheduleBlocked && <ArrowRightIcon className="h-5 w-5" />}
             </button>
           </div>
         </div>

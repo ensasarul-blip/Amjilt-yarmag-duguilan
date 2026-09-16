@@ -36,6 +36,21 @@ insert into public.app_settings (id) values (1) on conflict (id) do nothing;
 -- ---------------------------------------------------------------------
 -- Ангийн бүлгүүд (1-1, 1-2, ... 12-3)
 -- ---------------------------------------------------------------------
+-- ---------------------------------------------------------------------
+-- Түвшин тус бүрийн бүртгэлийн хуваарь (шатласан бүртгэл)
+--   Бага / дунд / ахлах анги өөр өөр өдөр бүртгүүлнэ.
+--   opens_at ба closes_at NULL бол тухайн түвшинд хязгаар байхгүй.
+--   Хугацааг ЗӨВХӨН энэ хүснэгтээр удирдана — админ самбараас өөрчилнө.
+-- ---------------------------------------------------------------------
+create table if not exists public.level_schedule (
+  level      text primary key check (level in ('baga','dund','ahlah')),
+  opens_at   timestamptz,
+  closes_at  timestamptz,
+  sort_order smallint not null default 0,
+  constraint level_schedule_time_order
+    check (opens_at is null or closes_at is null or closes_at > opens_at)
+);
+
 create table if not exists public.class_groups (
   code       text primary key,
   grade      smallint not null check (grade between 1 and 12),

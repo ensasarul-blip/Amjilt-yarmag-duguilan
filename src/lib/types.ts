@@ -45,6 +45,14 @@ export type AppSettings = {
   announcement: string | null;
 };
 
+/** Түвшин тус бүрийн бүртгэлийн хуваарь (шатласан бүртгэл) */
+export type LevelSchedule = {
+  level: Level;
+  opens_at: string | null;
+  closes_at: string | null;
+  sort_order: number;
+};
+
 export type ClassGroup = {
   code: string;
   grade: number;
